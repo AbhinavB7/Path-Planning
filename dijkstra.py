@@ -75,7 +75,7 @@ def Obstacles(obs):
 canvas = np.zeros((height, width, 3), dtype=np.uint8)
 
 # Call Obstacles function to populate the canvas
-obstacle_map = Obstacles(canvas.copy())
+canvas = Obstacles(canvas.copy())
 
 # Function to move up
 def move_up(node):
@@ -130,7 +130,7 @@ while True:
 
     if start_node[0] < 6 or start_node[0] >= width or start_node[1] < 6 or start_node[1] >= height:
         print("Out of canvas!!! Provide new coordinates!!")
-    elif ((obstacle_map[499 - start_node[1], start_node[0]])).all() or ((obstacle_map[499 - start_node[1], start_node[0]]) == cyan).all():
+    elif ((canvas[499 - start_node[1], start_node[0]])).all() or ((canvas[499 - start_node[1], start_node[0]]) == cyan).all():
         print("Obstacle !!! Provide new coordinates!!")
     else:
         break
@@ -142,13 +142,19 @@ while True:
 
     if goal_node[0] < 6 or goal_node[0] >= width or goal_node[1] < 6 or goal_node[1] >= height:
         print("Out of canvas!!! Provide new coordinates!!")
-    elif ((obstacle_map[499 - goal_node[1], goal_node[0]])).all() or ((obstacle_map[499 - goal_node[1], goal_node[0]]) == cyan).all():
+    elif ((canvas[499 - goal_node[1], goal_node[0]])).all() or ((canvas[499 - goal_node[1], goal_node[0]]) == cyan).all():
         print("Obstacle !!! Provide new coordinates!!")
     else:
         break
+# Video writer to save the output
+output_file = 'dijkstra_exploration.avi'
+fourcc = cv2.VideoWriter_fourcc(*'XVID')
+fps = 30
+video_writer = cv2.VideoWriter(output_file, fourcc, fps, (width, height))
+
 
 # Function to perform Dijkstra's algorithm
-def dijkstra(start, goal, obstacle_map):
+def dijkstra(start, goal, canvas):
     start_time = time.time()
     distance_dict = {start: 0}
     visited = set()
@@ -156,6 +162,8 @@ def dijkstra(start, goal, obstacle_map):
     # Initialize predecessor dictionary to store the path
     predecessor = {}
 
+    frame_counter = 0
+    
     while priority_queue:
         # Pop the node with the minimum distance
         current_distance, current_node = heapq.heappop(priority_queue)
@@ -175,10 +183,9 @@ def dijkstra(start, goal, obstacle_map):
         neighbors = []
         for action, cost in actions.items():
             neighbor = action(current_node)
-            if 0 <= neighbor[0] < width and 0 <= neighbor[1] < height and obstacle_map[height - neighbor[1] - 1, neighbor[0]].tolist() != blue:
-                canvas[height - neighbor[1] - 1, neighbor[0]] = (0, 255, 0)  # Change color of explored node
+            if 0 <= neighbor[0] < width and 0 <= neighbor[1] < height and canvas[height - neighbor[1] - 1, neighbor[0]].tolist() != blue:
                 neighbors.append((neighbor, cost))
-                
+
         # Update distances to neighbors
         for neighbor, action_cost in neighbors:
             new_distance = distance_dict[current_node] + action_cost
@@ -187,6 +194,21 @@ def dijkstra(start, goal, obstacle_map):
                 heapq.heappush(priority_queue, (new_distance, neighbor))
                 predecessor[neighbor] = current_node
 
+                # Change color of explored node
+                canvas[height - neighbor[1] - 1, neighbor[0]] = (0, 255, 0)
+
+                # Draw exploration step on the canvas
+                if frame_counter % 1000 == 0:
+                    exploration_canvas = canvas.copy()
+                    video_writer.write(exploration_canvas)
+                
+                frame_counter += 1
+
+    # Write the final frame
+    final_canvas = canvas.copy()
+    video_writer.write(final_canvas)
+    video_writer.release()
+    
     # Measure time taken
     end_time = time.time()
     time_taken = end_time - start_time
@@ -194,95 +216,29 @@ def dijkstra(start, goal, obstacle_map):
     return goal, time_taken, predecessor
 
 # Function to backtrack and find the optimal path
-def backtrack_path(start, goal, predecessor):
-    current = goal
-    path = [current]
-    while current != start:
-        if current not in predecessor:
-            print("No path found!")
-            return []
-        current = predecessor[current]
-        path.append(current)
-    return path[::-1]
+def backtrack_path(start, goal, predecessor, canvas):
+    current_node = goal
+    optimal_path = [current_node]
 
-# Function to visualize the exploration process and final path
-def visualize_path(obstacle_map, goal_node, optimal_path):
-    vis_map = obstacle_map.copy()
-    
-    # Visualize exploration path
-    for node in optimal_path[:-1]:
-        cv2.circle(vis_map, (node[0], height - node[1]), 3, (255, 0, 0), -1)  
-        
-    # Visualize final path
+    while current_node != start:
+        current_node = predecessor[current_node]
+        optimal_path.append(current_node)
+
+    optimal_path.reverse()
+
+    # Draw the optimal path
     for node in optimal_path:
-        cv2.circle(vis_map, (node[0], height - node[1]), 3, (0, 255, 0), -1)  
-    
-    # Visualize start and goal nodes
-    cv2.circle(vis_map, (start_node[0], height - start_node[1]), 5, (0, 0, 255), -1) 
-    cv2.circle(vis_map, (goal_node[0], height - goal_node[1]), 5, (255, 0, 255), -1) 
-    
-    plt.imshow(cv2.cvtColor(vis_map, cv2.COLOR_BGR2RGB))
-    plt.title("Optimal Path")
-    plt.axis('off')
-    plt.show()
+        cv2.circle(canvas, (node[0], height - node[1]), 1, (0, 0, 255), -1)
 
-# Call Dijkstra's algorithm
-goal_node, time_taken, predecessor = dijkstra(start_node, goal_node, obstacle_map)
+    return optimal_path
 
-# Backtrack and find optimal path
-optimal_path = backtrack_path(start_node, goal_node, predecessor)
+# Perform Dijkstra's algorithm and find the optimal path
+goal, time_taken, predecessor = dijkstra(start_node, goal_node, canvas)
+optimal_path = backtrack_path(start_node, goal, predecessor, canvas)
 
-# Function to calculate the total cost of the path
-def calculate_path_cost(path, actions):
-    total_cost = 0
-    for i in range(len(path) - 1):
-        action = (path[i+1][0] - path[i][0], path[i+1][1] - path[i][1])
-        total_cost += actions.get(action, 1)  # Use get method to handle missing keys
-    return total_cost
+# Show the final path
+plt.imshow(cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB))
+plt.title(f"Optimal Path from {start_node} to {goal_node} using Dijkstra's Algorithm")
+plt.show()
 
-optimal_path_cost = calculate_path_cost(optimal_path, actions)
-
-# Visualize exploration process and optimal path
-visualize_path(obstacle_map, goal_node, optimal_path)
-
-print("Time taken:", time_taken, "seconds")
-# print("Final cost of the optimal path:", optimal_path_cost)
-
-# Function to create a video of the exploration process and final path
-def create_video(obstacle_map, start_node, goal_node, predecessor, optimal_path, frame_skip=10):
-    vis_map = obstacle_map.copy()
-    height, width, _ = vis_map.shape
-    out = cv2.VideoWriter('dijkstra.avi', cv2.VideoWriter_fourcc(*'XVID'), 1000, (width, height))
-
-    visited_nodes = set()
-    
-    for node in predecessor.keys():
-        visited_nodes.add(node)
-        current_node = node
-        while current_node in predecessor:
-            visited_nodes.add(predecessor[current_node])
-            current_node = predecessor[current_node]
-
-    frame_counter = 0
-
-    # Visualize the path with frame skipping
-    for node in optimal_path:
-        cv2.circle(vis_map, (node[0], height - node[1]), 2, (255, 255, 255), 1)  # Final path in white
-
-        if frame_counter % frame_skip == 0:
-            out.write(vis_map)
-        frame_counter += 1
-
-    # Visualize start and goal nodes
-    cv2.circle(vis_map, (start_node[0], height - start_node[1]), 5, (0, 0, 255), -1)  # Start node in red
-    cv2.circle(vis_map, (goal_node[0], height - goal_node[1]), 5, (255, 0, 255), -1)  # Goal node in magenta
-    # out.write(vis_map)
-
-    out.release()
-    cv2.destroyAllWindows()
-
-
-# Create a video of the exploration process and final path
-create_video(obstacle_map, start_node, goal_node, predecessor, optimal_path)
-
-
+print(f"Time taken for Dijkstra's algorithm: {time_taken:.2f} seconds")
